@@ -68,7 +68,6 @@ $list = @imap_list($resource, $connection, "*");
 // recordLog(" {$aLang['_MSG_Can_not_connect']} $dest_server: " . htmlspecialchars(imap_last_error(), ENT_QUOTES));
 
 if (empty($list)) exit;
-$list = str_replace($connection, '', $list);
 
 $aUnsavedUid = $aSavedUid = $aAppendFail = array();
 $nCount = $nUnfetched = $nFetched = $nUnfetchedSize = $nFetchedSize = 0;
@@ -78,7 +77,7 @@ imapUid('read', $aSavedUid);
 $oStatus->status = 'check unfetched';
 updateStatus($oStatus);
 foreach ($list as $key => $mailbox) {
-	// $mailboxName = str_replace($connection, '', $mailbox);
+	$mailboxName = str_replace($connection, '', $mailbox);
 	if ($config->mailbox[0] !== 'ALL' && !in_array($mailboxName, $config->mailbox)) {
 		unset($list[$key]);
 		continue;
@@ -109,7 +108,7 @@ $oStatus->status = 'fetch';
 updateStatus($oStatus);
 
 foreach ($list as $mailbox) {
-	// $mailboxName = str_replace($connection, '', $mailbox);
+	$mailboxName = str_replace($connection, '', $mailbox);
 	$aMailboxName = convertMailbox($mailboxName);
 
 	$check = @imap_check($resource);
