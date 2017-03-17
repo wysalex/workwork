@@ -7,14 +7,32 @@ namespace Imap\ImapClient;
  */
 class ImapConnect
 {
+	private $host;
+	private $port;
+	private $flag;
+	private $mailbox;
+	private $option;
+	private $n_retries;
 
 	private $server;
 	private $resource;
 	public $connection;
 
-	public function __construct()
+	/**
+	 * @param $server connect server IP or Domain
+	 * @param $port connect port IMAP 143 / IMAPS 993
+	 * @param $flag
+	 * @param $option
+	 * @param $n_retries
+	 */
+	public function __construct($host, $port = 993, $flag = '', $mailbox = '', $option = 0, $n_retries = 0)
 	{
-		//
+		$this->host = $host;
+		$this->port = $port;
+		$this->flag = $flag;
+		$this->mailbox = $mailbox;
+		$this->option = $option;
+		$this->n_retries = $n_retries;
 	}
 
 	public function authenticate($username, $password)

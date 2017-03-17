@@ -29,7 +29,7 @@ class ImapClient
 	 * @param $option
 	 * @param $n_retries
 	 */
-	public function __construct($host, $port = 993, $flag = '', $mailbox, $option = 0, $n_retries = 0)
+	public function __construct($host, $port = 993, $flag = '', $mailbox = '', $option = 0, $n_retries = 0)
 	{
 		$this->host = $host;
 		$this->port = $port;
@@ -41,7 +41,7 @@ class ImapClient
 
 	public function connect($username, $password)
 	{
-		$connect = new ImapConnect();
+		$connect = new ImapConnect($this->host, $this->port, $this->flag, $this->mailbox, $this->option, $this->n_retries);
 		$result = $connect->authenticate($username, $password);
 		if ($result) {
 			$this->server = $connect->getServer();
@@ -76,8 +76,9 @@ class ImapClient
 	 */
 	public function getFolders($separator = '.')
 	{
-		$folders = imap_list($this->resource, $this->connection, "*");
-		return str_replace($this->connection, '', $folders);
+		return imap_list($this->resource, $this->connection, "*");
+		// $folders = imap_list($this->resource, $this->connection, "*");
+		// return str_replace($this->connection, '', $folders);
 	}
 
 	public function getMessages($criteria = 'ALL', $option = SE_UID)
