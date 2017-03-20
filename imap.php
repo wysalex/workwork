@@ -2,6 +2,7 @@
 <?php
 include_once('/PDATA/htmls/class/admin/XorFileHeadEncode.php');
 include_once('/PDATA/htmls/class/admin/CDbshell.php');
+include_once('/PDATA/htmls/class/admin/ImapClient.php');
 
 $configFile = $argv[1];
 
@@ -10,6 +11,7 @@ if (!is_file($configFile)) {
 }
 
 $db = new CDbShell();
+
 $config = json_decode(file_get_contents($configFile));
 
 $imapId = $config->id;
@@ -33,116 +35,83 @@ $oStatus->elapse = 0;
 $oStatus->expire = time() + 3600;
 updateStatus($oStatus);
 
-$aImapFlag = array();
-if ($config->flag === 'auto') {
-	$aImapFlag[] = '/imap4rev1/notls';
-	$aImapFlag[] = '/imap4rev1/notls/novalidate-cert';
-	$aImapFlag[] = '/imap4rev1/tls/novalidate-cert';
-	$aImapFlag[] = '/imap4rev1/ssl/notls';
-	$aImapFlag[] = '/imap4rev1/tls';
-	$aImapFlag[] = '/imap4rev1/ssl/tls';
-	$aImapFlag[] = '/imap4rev1/ssl/notls/novalidate-cert';
-	$aImapFlag[] = '/imap4rev1/ssl/tls/novalidate-cert';
-} else {
-	$aImapFlag[] = $config->flag;
-}
-
-foreach ($aImapFlag as $flag) {
-	$server = '{' . $config->server . ':' . $config->port . $flag . ($config->keep_mail ? '/readonly' : '') . '}';
-	// $server = '{' . $config->server . ':' . $config->port . $flag . '/readonly}';
-	recordLog(" Opening with " . $server . " (" . $config->username . ")...");
-	$resource = imap_open($server, $config->username, $config->password);
-	if ($resource !== false) {
-		break;
-	}
-}
-
-if ($resource === false) {
+$imap = new ImapClient($config->server, $config->port, $config->flag);
+$result = $imap->connect($config->username, $config->password);
+if ($result === false) {
 	recordLog(' Can_not_connect ' . $server . ': ' . htmlspecialchars(imap_last_error(), ENT_QUOTES));
-	var_dump(imap_errors());
+	var_dump(imap_last_error());
 	exit;
 }
-$check = @imap_check($resource);
-$connection = substr($check->Mailbox, 0, strpos($check->Mailbox, '}') + 1);
-$list = @imap_list($resource, $connection, "*");
-// recordLog(" {$aLang['_MSG_Can_not_connect']} $dest_server: " . htmlspecialchars(imap_last_error(), ENT_QUOTES));
-
-if (empty($list)) exit;
+$folders = $imap->getFolders();
 
 $aUnsavedUid = $aSavedUid = $aAppendFail = array();
 $nCount = $nUnfetched = $nFetched = $nUnfetchedSize = $nFetchedSize = 0;
 imapUid('read', $aSavedUid);
 
-// get total message
-$oStatus->status = 'check unfetched';
-updateStatus($oStatus);
-foreach ($list as $key => $mailbox) {
-	$mailboxName = str_replace($connection, '', $mailbox);
-	if ($config->mailbox[0] !== 'ALL' && !in_array($mailboxName, $config->mailbox)) {
-		unset($list[$key]);
+foreach ($folders as $key => $folder) {
+	if ($config->mailbox[0] !== 'ALL' && !in_array($folder, $config->mailbox)) {
+		unset($folders[$key]);
 		continue;
 	}
 
-	$check = @imap_check($resource);
-	if ($check === false || $check->Mailbox !== $mailbox) {
-		@imap_reopen($resource, $mailbox);
-		$check = @imap_check($resource);
-	}
-
+	$imap->selectFolder($folder);
+	$check = $imap->getResponseMailbox();
 	if ($check->Nmsgs === 0) {
 		continue;
 	}
 
-	$aMailboxName = convertMailbox($mailboxName);
+	$aFolderName = convertFolder($folder);
 
-	$messageUids = @imap_search($resource, 'ALL', SE_UID);
-	if (is_array($aSavedUid[$aMailboxName['utf7']])) {
-		$aUnsavedUid[$aMailboxName['utf7']] = array_diff($messageUids, $aSavedUid[$aMailboxName['utf7']]);
+	$messageUids = $imap->getMessages();
+	if (is_array($aSavedUid[$aFolderName['utf7']])) {
+		$aUnsavedUid[$aFolderName['utf7']] = array_diff($messageUids, $aSavedUid[$aFolderName['utf7']]);
 	} else {
-		$aUnsavedUid[$aMailboxName['utf7']] = $messageUids;
+		$aUnsavedUid[$aFolderName['utf7']] = $messageUids;
 	}
-	$nUnfetched += count($aUnsavedUid[$aMailboxName['utf7']]);
+	$nUnfetched += count($aUnsavedUid[$aFolderName['utf7']]);
 }
 $oStatus->total = $nUnfetched;
 $oStatus->status = 'fetch';
 updateStatus($oStatus);
 
-foreach ($list as $mailbox) {
-	$mailboxName = str_replace($connection, '', $mailbox);
-	$aMailboxName = convertMailbox($mailboxName);
+foreach ($folders as $folder) {
+	$aFolderName = convertFolder($folder);
 
-	$check = @imap_check($resource);
-	if ($check === false || $check->Mailbox !== $mailbox) {
-		@imap_reopen($resource, $mailbox);
-		$check = @imap_check($resource);
+	$imap->selectFolder($folder);
+	$check = $imap->getResponseMailbox();
+	if ($check->Nmsgs === 0) {
+		continue;
 	}
 
-	recordLog(' Check_mailbox ' . $aMailboxName['utf8']);
+	recordLog(' Check_mailbox ' . $aFolderName['utf8']);
 
-	$oStatus->status = 'fetch mailbox : ' . $aMailboxName['utf8'];
+	$oStatus->status = 'fetch mailbox : ' . $aFolderName['utf8'];
 	updateStatus($oStatus);
 
 	// fetch message to mail archive
-	if (!is_array($aUnsavedUid[$aMailboxName['utf7']]) || empty($aUnsavedUid[$aMailboxName['utf7']])) {
+	if (!is_array($aUnsavedUid[$aFolderName['utf7']]) || empty($aUnsavedUid[$aFolderName['utf7']])) {
 		continue;
 	}
-	while ($uid = array_shift($aUnsavedUid[$aMailboxName['utf7']])) {
+	while ($uid = array_shift($aUnsavedUid[$aFolderName['utf7']])) {
 		if($nFetched > 0 && 0 === ($nFetched % 500)) {
 			echo memory(true) . "\n";
 		}
 		if($nFetched > 0 && 0 === ($nFetched % 100)) { // clear cache to release memory
-			imap_gc($resource, IMAP_GC_ELT);
+			$imap->releaseCache();
 		}
 
-		$overview = @imap_fetch_overview($resource, $uid, FT_UID);
-		if ($overview[0]->msgno > 0) {
-			$sEmlFile = '/HDD/PDATA/imap/' . $domain . '/' . $account . '/' . $aMailboxName['utf7'] . '.' . $uid . '.S=' . $overview[0]->size . '.eml';
-			if (@imap_savebody($resource, $sEmlFile, $overview[0]->msgno)) {
+		$overview = $imap->getMessageInfo($uid);
+		if ($config->skip_size > 0 && $overview->size > $config->skip_size) {
+			continue;
+		}
+		if ($overview->msgno > 0) {
+			$sEmlFile = '/HDD/PDATA/imap/' . $domain . '/' . $account . '/' . $aFolderName['utf7'] . '.' . $uid . '.S=' . $overview->size . '.eml';
+			if ($imap->saveMessage($sEmlFile, $overview->msgno)) {
 				$nFetched++;
-				$nFetchedSize += $overview[0]->size;
+				$nFetchedSize += $overview->size;
 
-				imapUid('add', $aSavedUid, $aMailboxName['utf7'], array($uid));
-				recordLog(" Fetched fetched: " . $nFetched . "/ uid: " . $uid . " (" . humanSize($overview[0]->size) . ")");
+				imapUid('add', $aSavedUid, $aFolderName['utf7'], array($uid));
+				recordLog(" Fetched fetched: " . $nFetched . "/ uid: " . $uid . " (" . humanSize($overview->size) . ")");
 				$oStatus->fetched = $nFetched;
 				$oStatus->fetchedSize = $nFetchedSize;
 				updateStatus($oStatus);
@@ -150,9 +119,9 @@ foreach ($list as $mailbox) {
 				// delete mail
 				// is very danger please check is currect
 				$nEmlSize = filesize($sEmlFile);
-				if ($config->keep_mail === false && $nEmlSize > 0 && $nEmlSize === $overview[0]->size) {
-					imap_delete($resource, $overview[0]->msgno);
-					recordLog(" Delete mailbox: " . $aMailboxName['utf8'] . " -> msgno: " . $overview[0]->msgno);
+				if ($config->keep_mail === false && $nEmlSize > 0 && $nEmlSize === $overview->size) {
+					$imap->deleteMessage($overview->msgno);
+					recordLog(" Delete mailbox: " . $aFolderName['utf8'] . " -> msgno: " . $overview->msgno);
 				}
 
 				if ($oCmt->nowSecond() > $maxProcessTime) {
@@ -162,10 +131,7 @@ foreach ($list as $mailbox) {
 					$oStatus->elapse = $oCmt->nowSecond();
 					updateStatus($oStatus);
 					addLog($config, $oStatus);
-					if ($config->keep_mail === false) {
-						imap_expunge($resource);
-					}
-					imap_close($resource);
+
 					echo "Timeout\n";
 					echo "================\n";
 					echo 'Fetched : ' . $nFetched . "\n";
@@ -177,7 +143,7 @@ foreach ($list as $mailbox) {
 			} else {
 				recordLog(" WARNING message " . $uid . " not saved. " . imap_last_error());
 				//發生錯誤跳過並紀錄
-				$aAppendFail[$aMailboxName['utf7']] = $uid;
+				$aAppendFail[$aFolderName['utf7']] = $uid;
 			}
 		}
 	}
@@ -185,7 +151,6 @@ foreach ($list as $mailbox) {
 if ($config->keep_mail === false) {
 	imap_expunge($resource);
 }
-imap_close($resource);
 
 if(!empty($aAppendFail)) {
 	foreach($aAppendFail as $dMbox => $uid) {
@@ -209,20 +174,20 @@ recordLog(' End fetch');
 unlink($sStatusFile);
 exit;
 
-function convertMailbox($mailboxName)
+function convertFolder($folder)
 {
-	$mailboxAsciiEncode = ('ascii' == strtolower(mb_detect_encoding($mailboxName))); //判斷遠端目錄名稱編碼是否為 ASCII
+	$folderAsciiEncode = ('ascii' == strtolower(mb_detect_encoding($folder))); //判斷遠端目錄名稱編碼是否為 ASCII
 	//如遠端目錄名稱是 ASCII 編碼則預設認定是 UTF7-IMAP , 反之則以偵測到的編碼來轉換成 UTF7-IMAP
-	$mailbox_encode = mb_detect_encoding($mailboxName, array('ASCII', 'BIG5', 'GB2312', 'GBK')); //依指定編碼來偵測遠端目錄名稱
-	$utf7Mailbox = $mailboxAsciiEncode ? $mailboxName : mb_convert_encoding($mailboxName, "UTF7-IMAP", $mailbox_encode);
-	if ('ascii' == strtolower(mb_detect_encoding($mailboxName))) {
-		$utf8Mailbox = mb_convert_encoding($mailboxName, 'utf-8', 'utf7-imap');
+	$folder_encode = mb_detect_encoding($folder, array('ASCII', 'BIG5', 'GB2312', 'GBK')); //依指定編碼來偵測遠端目錄名稱
+	$utf7Folder = $folderAsciiEncode ? $folder : mb_convert_encoding($folder, "UTF7-IMAP", $folder_encode);
+	if ('ascii' == strtolower(mb_detect_encoding($folder))) {
+		$utf8Folder = mb_convert_encoding($folder, 'utf-8', 'utf7-imap');
 	} else {
-		$utf8Mailbox = mb_convert_encoding($mailboxName, 'utf-8', $mailbox_encode);
+		$utf8Folder = mb_convert_encoding($folder, 'utf-8', $folder_encode);
 	}
 	return array(
-		'utf7' => $utf7Mailbox,
-		'utf8' => $utf8Mailbox,
+		'utf7' => $utf7Folder,
+		'utf8' => $utf8Folder,
 	);
 }
 

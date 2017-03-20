@@ -1,7 +1,4 @@
 <?php
-
-namespace Imap\ImapClient;
-
 /**
  * summary
  */

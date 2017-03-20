@@ -1,9 +1,5 @@
 <?php
-
-namespace Imap\ImapClient;
-
-use Imap\ImapClient\ImapConnect as ImapConnect;
-
+include_once('/PDATA/htmls/class/admin/ImapConnection.php');
 /**
  * summary
  */
@@ -26,6 +22,7 @@ class ImapClient
 	 * @param $server connect server IP or Domain
 	 * @param $port connect port IMAP 143 / IMAPS 993
 	 * @param $flag
+	 * @param $flag
 	 * @param $option
 	 * @param $n_retries
 	 */
@@ -39,6 +36,12 @@ class ImapClient
 		$this->n_retries = $n_retries;
 	}
 
+	/**
+	 * connect IMAP
+	 *
+	 * @param string $username
+	 * @param string $password
+	 */
 	public function connect($username, $password)
 	{
 		$connect = new ImapConnect($this->host, $this->port, $this->flag, $this->mailbox, $this->option, $this->n_retries);
@@ -68,19 +71,23 @@ class ImapClient
 
 	/**
 	 * Returns all available folders
-	 *
-	 * @param string $separator. Default is '.'
-	 * @param int $type. Has two meanings 0 and 1.
-	 * If 0 return nested array, if 1 return an array of strings.
-	 * @return array with folder names
 	 */
-	public function getFolders($separator = '.')
+	public function getFolders()
 	{
-		return imap_list($this->resource, $this->connection, "*");
-		// $folders = imap_list($this->resource, $this->connection, "*");
-		// return str_replace($this->connection, '', $folders);
+		$folders = imap_list($this->resource, $this->connection, "*");
+		return str_replace($this->connection, '', $folders);
 	}
 
+	/**
+	 * Get Messages by Criteria
+	 *
+	 * @see http://php.net/manual/en/function.imap-search.php
+	 *
+	 * @param string $criteria ALL, UNSEEN, FLAGGED, UNANSWERED, DELETED, UNDELETED, etc (e.g. FROM "joey smith")
+	 * @param $option
+	 *
+	 * @return array
+	 */
 	public function getMessages($criteria = 'ALL', $option = SE_UID)
 	{
 		$result = imap_search($this->resource, $criteria, $option);
