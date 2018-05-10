@@ -4,7 +4,6 @@ include_once('base.php');
 include_once('XorFileHeadEncode.php');
 include_once('system.ini');
 include_once('system2.ini');
-include_once('/PDATA/htmls/class/admin/ImapClient.php');
 
 $sCurFile = basename(__file__);
 
@@ -29,8 +28,8 @@ $config = new StdClass;
 $config->server = $argv[1];
 $config->port = $argv[2];
 $config->security = $argv[3];
-$config->username = $argv[4];
-$config->password = $argv[5];
+$config->username = stripcslashes($argv[4]);
+$config->password = stripcslashes($argv[5]);
 $config->mailbox = json_decode(stripcslashes($argv[6]), true);
 // $config->mailbox = json_decode('["INBOX"]', true);
 // $config->mailbox = json_decode('["INBOX","INBOX.&V4NXPpD1TvaQGnfl-","INBOX.&bTtS1ZCAiss-","INBOX.&biyKZmpf-","INBOX.&dXBeOFvEkAE-","INBOX.&e6F0BpDo-","INBOX.Drafts","INBOX.Sent","INBOX.Trash","INBOX.ms &fPt9cZAad+U-","INBOX.test","INBOX.work"]', true);
@@ -91,7 +90,7 @@ function checkMailbox($sServer, $sUser, $sPasswd, $nPort, $mailboxs, $sSecurity 
 	}
 	// $msg = fgets($fp);
 	// echo trim($msg) . "\n";
-	fputs($fp, 'C: login ' . $sUser . ' ' . $sPasswd . "\n");
+	fputs($fp, 'C: login ' . $sUser . ' ' . $sPasswd . "\r\n");
 	$result = getResponse($fp);
 	if ($result !== true) {
 		$oStatus->status = $result;
@@ -100,7 +99,7 @@ function checkMailbox($sServer, $sUser, $sPasswd, $nPort, $mailboxs, $sSecurity 
 		return false;
 	}
 	foreach ($mailboxs as $mailbox) {
-		fputs($fp, 'C: select "' . $mailbox . "\"\n");
+		fputs($fp, 'C: select "' . $mailbox . "\"\r\n");
 		while ($msg = fgets($fp)) {
 			// if (preg_match("/EXISTS$/", trim($msg))) {
 			// 	$msg = preg_split("/[\s]+/", trim($msg));
@@ -108,11 +107,11 @@ function checkMailbox($sServer, $sUser, $sPasswd, $nPort, $mailboxs, $sSecurity 
 			// 	$oStatus->total += $msg[1];
 			// }
 			if (preg_match("/^\C: OK\s/", $msg)) {
-				fputs($fp, 'C: search all' . "\n");
-				// fputs($fp, 'C: search larger 10485760' . "\n");
+				fputs($fp, 'C: search all' . "\r\n");
+				// fputs($fp, 'C: search larger 10485760' . "\r\n");
 				$search = fgets($fp);
 				$msg = fgets($fp);
-				if (preg_match("/^\C: OK Search/", $msg)) {
+				if (preg_match("/^\C: OK\s/", $msg)) {
 					$search = trim(substr($search, 8));
 					$search = preg_split("/[\s]+/", $search);
 					$oStatus->total += count($search);
@@ -124,7 +123,7 @@ function checkMailbox($sServer, $sUser, $sPasswd, $nPort, $mailboxs, $sSecurity 
 			}
 		}
 	}
-	fputs($fp, 'C: logout' . "\n");
+	fputs($fp, 'C: logout' . "\r\n");
 	$result = getResponse($fp);
 	if ($result !== true) {
 		$oStatus->status = $result;
@@ -139,6 +138,7 @@ function checkMailbox($sServer, $sUser, $sPasswd, $nPort, $mailboxs, $sSecurity 
 function getResponse($fp)
 {
 	while ($msg = fgets($fp)) {
+		// echo $msg;
 		if (preg_match("/^\C: OK\s/", $msg)) {
 			return true;
 		}

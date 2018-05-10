@@ -1,7 +1,5 @@
 <?php
-/**
- * summary
- */
+
 class ImapConnect
 {
 	private $host;
@@ -19,6 +17,7 @@ class ImapConnect
 	 * @param $server connect server IP or Domain
 	 * @param $port connect port IMAP 143 / IMAPS 993
 	 * @param $flag
+	 * @param $mailbox
 	 * @param $option
 	 * @param $n_retries
 	 */
@@ -44,15 +43,27 @@ class ImapConnect
 			$aImapFlag[] = '/imap4rev1/ssl/tls';
 			$aImapFlag[] = '/imap4rev1/ssl/notls/novalidate-cert';
 			$aImapFlag[] = '/imap4rev1/ssl/tls/novalidate-cert';
+			if ($this->port == 993) {
+				$aImapFlag = array_reverse($aImapFlag);
+			}
 		} else {
 			$aImapFlag[] = $this->flag;
+			if ($this->port == 993) {
+				$aImapFlag[] = '/imap4rev1/ssl/tls/novalidate-cert';
+				$aImapFlag[] = '/imap4rev1/ssl/notls/novalidate-cert';
+			}
 		}
 
 		foreach ($aImapFlag as $flag) {
+			if ($this->host == 'outlook.office365.com') {
+				$flag .= '/authuser=' . $username;
+			}
 			$this->server = '{' . $this->host . ':' . $this->port . $flag . '}' . $this->mailbox;
-			$this->resource = imap_open($this->server, $username, $password);
+			$this->resource = imap_open($this->server, $username, $password, OP_HALFOPEN, 1);
 			if ($this->resource !== false) {
 				break;
+			} else {
+				trigger_error(imap_last_error());
 			}
 		}
 
